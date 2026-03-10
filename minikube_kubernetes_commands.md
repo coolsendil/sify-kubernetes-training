@@ -425,6 +425,19 @@ kubectl delete pod
 
 ---
 
+## Deployment/Scale/Rollout
+
+```bash
+
+kubectl apply -f create-nginx-deployment.yaml
+kubectl scale deployment nginx-deployment --replicas=10 -n test
+kubectl set image deployment/nginx-deployment nginx=nginx:1.26 -n test
+kubectl rollout status deployment/nginx-deployment -n test
+kubectl rollout undo deployment/nginx-deployment -n test
+```
+
+---
+
 # Summary
 
 Typical workflow:
