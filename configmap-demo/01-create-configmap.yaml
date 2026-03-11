@@ -1,13 +1,7 @@
-apiVersion: v1
-kind: Namespace
-metadata: 
-  name: demo
-
----
 apiVersion: v1 
 kind: ConfigMap
 metadata:
-  name: myapp
+  name: myapp-cm
   namespace: demo
 data:
   APP_ENV: testing
