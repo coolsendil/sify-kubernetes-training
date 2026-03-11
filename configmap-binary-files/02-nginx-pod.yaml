@@ -16,7 +16,7 @@ spec:
     volumeMounts:
     - name: binary-config
       mountPath: /usr/share/nginx/html/config
-      readyOnly: true
+      readOnly: true
     ports:
       - containerPort: 80
     

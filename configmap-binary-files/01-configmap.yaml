@@ -4,4 +4,4 @@ metadata:
   name: myapp-file-cm
   namespace: demo
 binaryData:
-  data.txt: SGVsbG8gSSBhbSB1c2luZyBDb25maWdtYXAgYXMgYSBiaW5hcnkgZGF0YQo
+  data.txt: SGVsbG8gSSBhbSB1c2luZyBDb25maWdtYXAgYXMgYSBiaW5hcnkgZGF0YQo=
