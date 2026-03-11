@@ -2,6 +2,7 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -130,6 +131,13 @@ func main() {
 	mux.HandleFunc("/ping", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(200)
 		w.Write([]byte("pong"))
+	})
+	mux.HandleFunc("/greet", func(w http.ResponseWriter, r *http.Request) {
+		response := map[string]string{"message": "Hello from Sify...",
+			"status": "success"}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(response)
+
 	})
 
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
