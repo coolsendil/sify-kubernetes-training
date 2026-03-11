@@ -5,6 +5,8 @@ kind: Deployment
 metadata:
   name: go-app
   namespace: db-demo-ns
+  annotations:
+    kubernetes.io/change-cause: "initial go-app v0.1 deployment"
 spec:
   replicas: 1
   selector:
