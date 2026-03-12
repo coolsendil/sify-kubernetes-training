@@ -26,7 +26,7 @@ spec:
         - containerPort: 8080
         volumeMounts:
         - name: uploads
-          mountPath: data/uploads
+          mountPath: /data/uploads
      
       volumes:
       - name: uploads

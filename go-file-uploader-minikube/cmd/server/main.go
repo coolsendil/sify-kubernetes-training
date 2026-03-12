@@ -89,7 +89,7 @@ var tpl = template.Must(template.New("index").Parse(`<!doctype html>
 </html>`))
 
 func main() {
-	uploadDir := getenv("UPLOAD_DIR", "data/uploads")
+	uploadDir := getenv("UPLOAD_DIR", "/data/uploads")
 	title := getenv("APP_TITLE", "Go File Uploader")
 	accessNote := getenv("ACCESS_NOTE", "Files are stored using the Kubernetes volume mounted at /data/uploads.")
 	addr := getenv("LISTEN_ADDR", ":8080")

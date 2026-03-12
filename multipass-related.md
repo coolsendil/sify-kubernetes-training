@@ -46,7 +46,7 @@ sudo apt-mark hold kubelet kubeadm kubectl
 - Run only on master node
 
 ```bash
-sudo kubeadm init --apiserver-advertise-address=10.38.154.248 --pod-network-cidr=192.168.0.0/16
+sudo kubeadm init --apiserver-advertise-address=10.38.x.x --pod-network-cidr=192.168.0.0/16
 
 mkdir -p $HOME/.kube
 sudo cp -i /etc/kubernetes/admin.conf $HOME/.kube/config
@@ -56,7 +56,8 @@ kubectl apply -f https://raw.githubusercontent.com/projectcalico/calico/v3.30.0/
 kubeadm token create --print-join-command
 ```
 
-kubeadm join 10.38.154.248:6443 --token bi7ohs.bhq91mq5f9qmsm5c --discovery-token-ca-cert-hash sha256:b2257edc2a0d83feeeb334257b527805f3a3e37da0ae234c51ad922c054275aa 
+kubeadm join 10.38.154.196:6443 --token n6pthv.5j28yj5e9b00sse8 \
+	--discovery-token-ca-cert-hash sha256:35e7684af3e33bc1e918641515f8285edb8ea553091720fb07da1572f52d1ee1 
 
 
 ## Worker Node
