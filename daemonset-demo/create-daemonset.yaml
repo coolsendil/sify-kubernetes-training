@@ -21,11 +21,13 @@ spec:
             mountPath: /var/log
           - name: containers
             mountPath: /var/log/containers
-            
+
       volumes:
       - name: varlog
         hostPath:
           path: /var/log
+          type: DirectoryOrCreate
+
       - name: containers
         hostPath:
           path: /var/log/containers
