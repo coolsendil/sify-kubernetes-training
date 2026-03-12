@@ -29,7 +29,15 @@ write_files:
       apt update
       apt install -y kubectl
 
-      echo "kubectl installed successfully"
+      echo "Creating kube config directory..."
+
+      mkdir -p /root/.kube
+      touch /root/.kube/config
+
+      chmod 700 /root/.kube
+      chmod 600 /root/.kube/config
+
+      echo "kubectl client setup complete"
 
 runcmd:
   - bash /usr/local/bin/kubectl-install.sh
