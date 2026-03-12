@@ -20,7 +20,7 @@ spec:
     spec:
       # Replace worker-1 with your actual node hostname label value
       nodeSelector:
-        kubernetes.io/hostname: worker-1
+        kubernetes.io/hostname: k8s-worker
 
       containers:
         - name: gofile-store
