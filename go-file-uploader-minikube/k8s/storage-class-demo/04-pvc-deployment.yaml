@@ -1,3 +1,31 @@
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: upload-pv
+spec:
+  capacity:
+    storage: 1Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /data/uploads
+
+--- 
+
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: upload-pvc2
+  namespace : upload-demo
+spec:
+  resources:
+    requests:
+      storage: 1Gi
+  volumeMode: Filesystem
+  accessModes:
+    - ReadWriteOnce
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -30,7 +58,7 @@ spec:
       volumes:
       - name: uploads
         persistentVolumeClaim:
-          claimName: upload-pvc
+          claimName: upload-pvc2
 ---
 apiVersion: v1
 kind: Service
