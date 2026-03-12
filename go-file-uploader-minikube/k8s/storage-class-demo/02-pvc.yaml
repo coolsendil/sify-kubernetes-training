@@ -1,13 +1,12 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: shared-nfs-pvc
+  name: upload-pvc
   namespace: upload-demo
 spec:
   accessModes:
-    - ReadWriteMany
+  - ReadWriteOnce
+  storageClassName: upload-storage
   resources:
     requests:
       storage: 1Gi
-  storageClassName: nfs-manual
-  volumeName: shared-nfs-pv
