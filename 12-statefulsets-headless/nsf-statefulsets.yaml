@@ -1,6 +1,6 @@
 apiVersion: v1
 kind: Namespace
-metadata: 
+metadata:
   name: database
 ---
 apiVersion: v1
@@ -49,33 +49,27 @@ metadata:
   namespace: database
 spec:
   serviceName: mysql
-  replicas: 2
-
+  replicas: 1
   selector:
     matchLabels:
       app: mysql
-
   template:
     metadata:
       labels:
         app: mysql
     spec:
       containers:
-      - name: mysql
-        image: mysql:8
-        ports:
-        - containerPort: 3306
-
-        env:
-        - name: MYSQL_ROOT_PASSWORD
-          value: password
-
-        volumeMounts:
-        - name: mysql-data
-          mountPath: /var/lib/mysql
-
+        - name: mysql
+          image: mysql:8
+          ports:
+            - containerPort: 3306
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: password
+          volumeMounts:
+            - name: mysql-data
+              mountPath: /var/lib/mysql
       volumes:
-      - name: mysql-data
-        persistentVolumeClaim:
-          claimName: nfs-pvc
----
+        - name: mysql-data
+          persistentVolumeClaim:
+            claimName: nfs-pvc
