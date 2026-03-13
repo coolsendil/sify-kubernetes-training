@@ -13,4 +13,13 @@ k8s-worker  192.168.2.8
 
 Address-Range: 192.168.2.40-192.168.2.50
 
-3. 
+3. Run 00-metallb-config.yaml
+
+4. Install Envoy
+
+```bash
+helm install eg oci://docker.io/envoyproxy/gateway-helm \
+  --version v1.3.3 \
+  -n envoy-gateway-system \
+  --create-namespace
+  ```
