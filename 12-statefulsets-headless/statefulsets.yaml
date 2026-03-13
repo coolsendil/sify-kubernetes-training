@@ -53,7 +53,7 @@ spec:
       name: mysql-data
     spec:
       accessModes: ["ReadOnlyMany"]
-      storageClassName: manual
+      storageClassName: ""
       resources:
         requests:
           storage: 2Gi

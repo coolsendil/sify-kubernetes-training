@@ -9,6 +9,6 @@ spec:
   accessModes:
     - ReadOnlyMany
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
+  storageClassName: ""
   hostPath:
     path: /data/mysql
