@@ -53,7 +53,7 @@ spec:
       name: mysql-data
     spec:
       accessModes: ["ReadOnlyOnce"]
-      storageClassName: local-path
+      storageClassName: local-path # This run on local-storage-path-provisioner, run 9th example document before doing it here
       resources:
         requests:
           storage: 2Gi
