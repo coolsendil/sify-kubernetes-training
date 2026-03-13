@@ -9,25 +9,13 @@ metadata:
   name: nfs-pv
 spec:
   capacity:
-    storage: 5Gi
+    storage: 6Gi
   accessModes:
     - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
   nfs:
-    server: 10.38.154.22
+    server: 192.168.2.9
     path: /srv/nfs/kubedata
----
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: nfs-pvc
-  namespace: database
-spec:
-  accessModes:
-    - ReadWriteMany
-  resources:
-    requests:
-      storage: 1Gi
 ---
 apiVersion: v1
 kind: Service
@@ -69,7 +57,12 @@ spec:
           volumeMounts:
             - name: mysql-data
               mountPath: /var/lib/mysql
-      volumes:
-        - name: mysql-data
-          persistentVolumeClaim:
-            claimName: nfs-pvc
+  volumeClaimTemplates:
+  - metadata:
+      name: mysql-data
+    spec:
+      accessModes: ["ReadWriteMany"]
+      storageClassName: ""
+      resources:
+        requests:
+          storage: 1Gi
