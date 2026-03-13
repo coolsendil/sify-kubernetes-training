@@ -4,20 +4,6 @@ metadata:
   name: database
 ---
 apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: nfs-pv
-spec:
-  capacity:
-    storage: 6Gi
-  accessModes:
-    - ReadWriteMany
-  persistentVolumeReclaimPolicy: Retain
-  nfs:
-    server: 192.168.2.9
-    path: /srv/nfs/kubedata
----
-apiVersion: v1
 kind: Service
 metadata:
   name: mysql
@@ -61,8 +47,8 @@ spec:
   - metadata:
       name: mysql-data
     spec:
-      accessModes: ["ReadWriteMany"]
-      storageClassName: ""
+      accessModes: ["ReadWriteOne"]
+      storageClassName: local-path
       resources:
         requests:
           storage: 1Gi
