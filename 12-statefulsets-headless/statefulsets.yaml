@@ -1,7 +1,7 @@
 apiVersion: v1
 kind: Namespace
 metadata: 
-  name: ns-b
+  name: database
 ---
 apiVersion: v1
 kind: Service
