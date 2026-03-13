@@ -52,7 +52,7 @@ spec:
   - metadata:
       name: mysql-data
     spec:
-      accessModes: ["ReadWriteOnce"]
+      accessModes: ["ReadOnlyMany"]
       storageClassName: manual
       resources:
         requests:
