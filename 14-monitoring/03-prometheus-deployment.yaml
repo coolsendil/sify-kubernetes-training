@@ -32,7 +32,7 @@ spec:
       volumes:
         - name: config
           configMap:
-            name: prometheus-config
+            name: prometheus-server-conf
         - name: data
           emptyDir: {}
 ---
