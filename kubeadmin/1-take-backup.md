@@ -10,6 +10,7 @@ kubectl get rolebinding -A -o yaml > rb-backup.yaml
 
 Stop Api server port access during backup ..
 
+
 # Freeze
 iptables -A INPUT -p tcp --dport 6443 -j DROP
 
@@ -20,3 +21,11 @@ etcdctl ... snapshot save backup.db
 
 # Resume
 iptables -D INPUT -p tcp --dport 6443 -j DROP
+
+
+
+### Cert transfer
+
+multipass exec k8s-master -- sudo cp /etc/kubernetes/pki/etcd/healthcheck-client.key /home/ubuntu/
+multipass exec k8s-master -- sudo chown ubuntu:ubuntu /home/ubuntu/healthcheck-client.key
+multipass transfer k8s-master:/home/ubuntu/healthcheck-client.key .
