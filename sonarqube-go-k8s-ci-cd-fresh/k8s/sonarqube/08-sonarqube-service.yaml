@@ -4,6 +4,7 @@ metadata:
   name: sonarqube
   namespace: sonarqube
 spec:
+  type: NodePort
   selector:
     app: sonarqube
   ports:
