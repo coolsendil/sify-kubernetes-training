@@ -197,21 +197,42 @@ extract_certs_from_kubeconfig() {
   TMP_DIR="$(mktemp -d)"
 
   local ca_data cert_data key_data
+  local ca_file cert_file key_file
+
   ca_data="$(kubectl config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' 2>/dev/null || true)"
   cert_data="$(kubectl config view --raw -o jsonpath='{.users[0].user.client-certificate-data}' 2>/dev/null || true)"
   key_data="$(kubectl config view --raw -o jsonpath='{.users[0].user.client-key-data}' 2>/dev/null || true)"
 
-  [[ -n "$ca_data" ]] || fail "No certificate-authority-data found in kubeconfig"
-  [[ -n "$cert_data" ]] || fail "No client-certificate-data found in kubeconfig"
-  [[ -n "$key_data" ]] || fail "No client-key-data found in kubeconfig"
+  ca_file="$(kubectl config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority}' 2>/dev/null || true)"
+  cert_file="$(kubectl config view --raw -o jsonpath='{.users[0].user.client-certificate}' 2>/dev/null || true)"
+  key_file="$(kubectl config view --raw -o jsonpath='{.users[0].user.client-key}' 2>/dev/null || true)"
 
-  echo "$ca_data"   | base64 -d > "$TMP_DIR/ca.crt"
-  echo "$cert_data" | base64 -d > "$TMP_DIR/client.crt"
-  echo "$key_data"  | base64 -d > "$TMP_DIR/client.key"
+  if [[ -n "$ca_data" ]]; then
+    echo "$ca_data" | base64 -d > "$TMP_DIR/ca.crt"
+    CACERT="$TMP_DIR/ca.crt"
+  elif [[ -n "$ca_file" ]]; then
+    CACERT="$ca_file"
+  else
+    fail "No CA cert found in kubeconfig"
+  fi
 
-  CACERT="$TMP_DIR/ca.crt"
-  CERT="$TMP_DIR/client.crt"
-  KEY="$TMP_DIR/client.key"
+  if [[ -n "$cert_data" ]]; then
+    echo "$cert_data" | base64 -d > "$TMP_DIR/client.crt"
+    CERT="$TMP_DIR/client.crt"
+  elif [[ -n "$cert_file" ]]; then
+    CERT="$cert_file"
+  else
+    fail "No client cert found in kubeconfig"
+  fi
+
+  if [[ -n "$key_data" ]]; then
+    echo "$key_data" | base64 -d > "$TMP_DIR/client.key"
+    KEY="$TMP_DIR/client.key"
+  elif [[ -n "$key_file" ]]; then
+    KEY="$key_file"
+  else
+    fail "No client key found in kubeconfig"
+  fi
 }
 
 # -----------------------------
