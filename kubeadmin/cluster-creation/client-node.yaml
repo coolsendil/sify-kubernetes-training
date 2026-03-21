@@ -10,6 +10,10 @@ packages:
   - gpg
   - tar
   - nfs-common
+  - unzip
+  - git
+  - jq
+  - wget
 
 write_files:
   - path: /usr/local/bin/client-setup.sh
@@ -74,6 +78,58 @@ write_files:
         kubectl version --client
       }
 
+      install_docker() {
+        log "Installing Docker Engine"
+
+        install -m 0755 -d /etc/apt/keyrings
+        curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+        chmod a+r /etc/apt/keyrings/docker.asc
+
+        cat >/etc/apt/sources.list.d/docker.sources <<EOF
+      Types: deb
+      URIs: https://download.docker.com/linux/ubuntu
+      Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+      Components: stable
+      Signed-By: /etc/apt/keyrings/docker.asc
+      EOF
+
+        apt-get update
+        apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+        systemctl enable docker
+        systemctl enable containerd
+        systemctl restart containerd
+        systemctl restart docker
+
+        docker --version
+        docker compose version
+      }
+
+      configure_ubuntu_docker_access() {
+        log "Granting docker access to ubuntu user"
+
+        usermod -aG docker ubuntu
+
+        mkdir -p "${UBUNTU_HOME}/.docker"
+        chown -R ubuntu:ubuntu "${UBUNTU_HOME}/.docker"
+
+        log "Docker access configured for ubuntu"
+      }
+
+      verify_tools() {
+        log "Verifying installed tools"
+
+        command -v kubectl
+        command -v etcdctl
+        command -v docker
+        command -v git
+        command -v jq
+        command -v unzip
+        command -v wget
+
+        log "All required tools are available"
+      }
+
       setup_kube_dir() {
         log "Creating ${KUBE_DIR}"
 
@@ -84,8 +140,6 @@ write_files:
         touch "${KUBE_DIR}/config"
         chown ubuntu:ubuntu "${KUBE_DIR}/config"
         chmod 600 "${KUBE_DIR}/config"
-
-        log "Configured ${KUBE_DIR} with secure permissions"
       }
 
       setup_shell_aliases() {
@@ -99,6 +153,9 @@ write_files:
         detect_arch
         install_etcdctl
         install_kubectl
+        install_docker
+        configure_ubuntu_docker_access
+        verify_tools
         setup_kube_dir
         setup_shell_aliases
 
