@@ -1,0 +1,342 @@
+#cloud-config
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gpg
+  - tar
+  - jq
+  - containerd
+  - nfs-common
+
+write_files:
+  - path: /usr/local/bin/k8s-master-setup.sh
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -Eeuo pipefail
+
+      K8S_MINOR_VERSION="${K8S_MINOR_VERSION:-v1.30}"
+      K8S_FULL_VERSION="${K8S_FULL_VERSION:-v1.30.10}"
+      POD_CIDR="${POD_CIDR:-10.244.0.0/16}"
+      SERVICE_CIDR="${SERVICE_CIDR:-10.96.0.0/12}"
+      APISERVER_ADVERTISE_ADDRESS="${APISERVER_ADVERTISE_ADDRESS:-}"
+      CONTROL_PLANE_ENDPOINT="${CONTROL_PLANE_ENDPOINT:-}"
+      NODE_NAME="${NODE_NAME:-$(hostname -s)}"
+      CRI_SOCKET="unix:///run/containerd/containerd.sock"
+      ETCD_INSTALL_DIR="/usr/local/bin"
+
+      log() {
+        echo
+        echo "[$(date '+%F %T')] $*"
+        echo
+      }
+
+      retry() {
+        local n=0
+        local max=5
+        local delay=5
+        until "$@"; do
+          n=$((n+1))
+          if [ "$n" -ge "$max" ]; then
+            echo "Command failed after ${max} attempts: $*"
+            return 1
+          fi
+          sleep "$delay"
+        done
+      }
+
+      detect_primary_ip() {
+        ip -4 route get 1.1.1.1 | awk '{for(i=1;i<=NF;i++) if ($i=="src") {print $(i+1); exit}}'
+      }
+
+      disable_swap() {
+        log "Disabling swap"
+        swapoff -a || true
+        sed -ri '/\sswap\s/s/^#?/#/' /etc/fstab
+      }
+
+      configure_kernel() {
+        log "Loading kernel modules and sysctl"
+
+        cat >/etc/modules-load.d/k8s.conf <<EOF
+      overlay
+      br_netfilter
+      EOF
+
+        modprobe overlay
+        modprobe br_netfilter
+
+        cat >/etc/sysctl.d/99-kubernetes-cri.conf <<EOF
+      net.bridge.bridge-nf-call-iptables=1
+      net.bridge.bridge-nf-call-ip6tables=1
+      net.ipv4.ip_forward=1
+      EOF
+
+        sysctl --system
+      }
+
+      configure_containerd() {
+        log "Configuring containerd"
+
+        mkdir -p /etc/containerd
+        containerd config default >/etc/containerd/config.toml
+
+        sed -ri 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
+        sed -ri 's#sandbox_image = ".*"#sandbox_image = "registry.k8s.io/pause:3.9"#' /etc/containerd/config.toml
+
+        systemctl daemon-reload
+        systemctl enable containerd
+        systemctl restart containerd
+      }
+
+      install_kubernetes_packages() {
+        log "Installing Kubernetes packages from pkgs.k8s.io"
+
+        mkdir -p /etc/apt/keyrings
+        export DEBIAN_FRONTEND=noninteractive
+
+        retry bash -c "curl -fsSL https://pkgs.k8s.io/core:/stable:/${K8S_MINOR_VERSION}/deb/Release.key | gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg"
+
+        cat >/etc/apt/sources.list.d/kubernetes.list <<EOF
+      deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${K8S_MINOR_VERSION}/deb/ /
+      EOF
+
+        retry apt-get update
+        retry apt-get install -y kubelet kubeadm kubectl
+        apt-mark hold kubelet kubeadm kubectl
+        systemctl enable kubelet
+      }
+
+      install_etcd_tools() {
+        log "Installing etcdctl and etcdutl on master"
+
+        local arch
+        case "$(uname -m)" in
+          x86_64) arch="amd64" ;;
+          aarch64|arm64) arch="arm64" ;;
+          *)
+            echo "Unsupported architecture: $(uname -m)"
+            exit 1
+            ;;
+        esac
+
+        local etcd_image_tag
+        etcd_image_tag="$(kubeadm config images list --kubernetes-version "${K8S_FULL_VERSION}" | awk -F: '/\/etcd:/ {print $NF; exit}')"
+
+        if [ -z "${etcd_image_tag}" ]; then
+          echo "Unable to determine etcd image tag from kubeadm"
+          exit 1
+        fi
+
+        local etcd_release_version
+        etcd_release_version="v$(echo "${etcd_image_tag}" | sed 's/-[0-9]\+$//')"
+
+        log "Detected etcd image tag: ${etcd_image_tag}"
+        log "Using etcd release binaries: ${etcd_release_version} for linux-${arch}"
+
+        cd /tmp
+        rm -rf /tmp/etcd-download
+        mkdir -p /tmp/etcd-download
+        cd /tmp/etcd-download
+
+        retry curl -fLO "https://github.com/etcd-io/etcd/releases/download/${etcd_release_version}/etcd-${etcd_release_version}-linux-${arch}.tar.gz"
+        tar -xzf "etcd-${etcd_release_version}-linux-${arch}.tar.gz"
+
+        install -m 0755 "etcd-${etcd_release_version}-linux-${arch}/etcdctl" "${ETCD_INSTALL_DIR}/etcdctl"
+        install -m 0755 "etcd-${etcd_release_version}-linux-${arch}/etcdutl" "${ETCD_INSTALL_DIR}/etcdutl"
+
+        chmod 0755 "${ETCD_INSTALL_DIR}/etcdctl" "${ETCD_INSTALL_DIR}/etcdutl"
+
+        etcdctl version
+        etcdutl version
+
+        rm -rf /tmp/etcd-download
+      }
+
+      kubeadm_init_cluster() {
+        if [ -f /etc/kubernetes/admin.conf ]; then
+          log "Kubernetes already initialized; skipping kubeadm init"
+          return 0
+        fi
+
+        log "Preparing kubeadm init configuration"
+
+        if [ -z "${APISERVER_ADVERTISE_ADDRESS}" ]; then
+          APISERVER_ADVERTISE_ADDRESS="$(detect_primary_ip)"
+        fi
+
+        cat >/root/kubeadm-init.yaml <<EOF
+      apiVersion: kubeadm.k8s.io/v1beta3
+      kind: InitConfiguration
+      localAPIEndpoint:
+        advertiseAddress: ${APISERVER_ADVERTISE_ADDRESS}
+        bindPort: 6443
+      nodeRegistration:
+        name: ${NODE_NAME}
+        criSocket: ${CRI_SOCKET}
+      ---
+      apiVersion: kubeadm.k8s.io/v1beta3
+      kind: ClusterConfiguration
+      kubernetesVersion: ${K8S_FULL_VERSION}
+      networking:
+        podSubnet: ${POD_CIDR}
+        serviceSubnet: ${SERVICE_CIDR}
+      EOF
+
+        if [ -n "${CONTROL_PLANE_ENDPOINT}" ]; then
+          cat >>/root/kubeadm-init.yaml <<EOF
+      controlPlaneEndpoint: ${CONTROL_PLANE_ENDPOINT}
+      EOF
+        fi
+
+        log "Running kubeadm init"
+        kubeadm init --config /root/kubeadm-init.yaml --upload-certs
+
+        log "Generating join command"
+        kubeadm token create --print-join-command >/home/ubuntu/join-worker.sh
+        chmod 0755 /home/ubuntu/join-worker.sh
+        chown ubuntu:ubuntu /home/ubuntu/join-worker.sh
+      }
+
+      configure_kubectl_access() {
+        log "Configuring kubectl access"
+
+        if [ ! -f /etc/kubernetes/admin.conf ]; then
+          log "admin.conf not found yet; skipping kubectl access setup"
+          return 0
+        fi
+
+        mkdir -p /root/.kube
+        cp -f /etc/kubernetes/admin.conf /root/.kube/config
+        chmod 600 /root/.kube/config
+
+        mkdir -p /home/ubuntu/.kube
+        cp -f /etc/kubernetes/admin.conf /home/ubuntu/.kube/config
+        chown -R ubuntu:ubuntu /home/ubuntu/.kube
+        chmod 600 /home/ubuntu/.kube/config
+
+        cat >/etc/profile.d/kubeconfig.sh <<'EOF'
+      export KUBECONFIG=$HOME/.kube/config
+      EOF
+        chmod 0644 /etc/profile.d/kubeconfig.sh
+      }
+
+      write_helper_scripts() {
+        log "Writing etcd backup and restore helper scripts"
+
+        cat >/usr/local/bin/etcd-local-backup.sh <<'EOF'
+      #!/usr/bin/env bash
+      set -Eeuo pipefail
+
+      BACKUP_DIR="${BACKUP_DIR:-/var/backups/etcd}"
+      SNAPSHOT_NAME="${SNAPSHOT_NAME:-snapshot-$(date +%F-%H%M%S).db}"
+
+      mkdir -p "${BACKUP_DIR}"
+
+      ETCDCTL_API=3 etcdctl \
+        --endpoints=https://127.0.0.1:2379 \
+        --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+        --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
+        --key=/etc/kubernetes/pki/etcd/healthcheck-client.key \
+        snapshot save "${BACKUP_DIR}/${SNAPSHOT_NAME}"
+
+      ETCDCTL_API=3 etcdutl snapshot status "${BACKUP_DIR}/${SNAPSHOT_NAME}" -w table
+      echo "Backup saved to: ${BACKUP_DIR}/${SNAPSHOT_NAME}"
+      EOF
+
+        chmod 0755 /usr/local/bin/etcd-local-backup.sh
+
+        cat >/usr/local/bin/etcd-restore-from-snapshot.sh <<'EOF'
+      #!/usr/bin/env bash
+      set -Eeuo pipefail
+
+      if [ $# -lt 1 ]; then
+        echo "Usage: $0 /path/to/snapshot.db"
+        exit 1
+      fi
+
+      SNAPSHOT_PATH="$1"
+      RESTORE_DIR="${RESTORE_DIR:-/var/lib/etcd-restore}"
+      MANIFEST_DIR="/etc/kubernetes/manifests"
+      BACKUP_MANIFEST_DIR="/root/k8s-manifests-backup"
+
+      if [ ! -f "${SNAPSHOT_PATH}" ]; then
+        echo "Snapshot not found: ${SNAPSHOT_PATH}"
+        exit 1
+      fi
+
+      mkdir -p "${BACKUP_MANIFEST_DIR}"
+
+      echo "Snapshot status:"
+      ETCDCTL_API=3 etcdutl snapshot status "${SNAPSHOT_PATH}" -w table
+
+      echo "Stopping static pods"
+      [ -f "${MANIFEST_DIR}/kube-apiserver.yaml" ] && mv "${MANIFEST_DIR}/kube-apiserver.yaml" "${BACKUP_MANIFEST_DIR}/"
+      [ -f "${MANIFEST_DIR}/etcd.yaml" ] && mv "${MANIFEST_DIR}/etcd.yaml" "${BACKUP_MANIFEST_DIR}/"
+
+      sleep 20
+
+      echo "Restoring snapshot to ${RESTORE_DIR}"
+      rm -rf "${RESTORE_DIR}"
+      ETCDCTL_API=3 etcdutl snapshot restore "${SNAPSHOT_PATH}" --data-dir "${RESTORE_DIR}"
+
+      chown -R root:root "${RESTORE_DIR}"
+      chmod -R go-rwx "${RESTORE_DIR}"
+
+      if [ -f "${BACKUP_MANIFEST_DIR}/etcd.yaml" ]; then
+        sed -i "s#--data-dir=/var/lib/etcd#--data-dir=${RESTORE_DIR}#g" "${BACKUP_MANIFEST_DIR}/etcd.yaml"
+        sed -i "s#path: /var/lib/etcd#path: ${RESTORE_DIR}#g" "${BACKUP_MANIFEST_DIR}/etcd.yaml"
+        mv "${BACKUP_MANIFEST_DIR}/etcd.yaml" "${MANIFEST_DIR}/"
+      else
+        echo "Missing backed-up etcd manifest"
+        exit 1
+      fi
+
+      sleep 20
+
+      if [ -f "${BACKUP_MANIFEST_DIR}/kube-apiserver.yaml" ]; then
+        mv "${BACKUP_MANIFEST_DIR}/kube-apiserver.yaml" "${MANIFEST_DIR}/"
+      fi
+
+      sleep 30
+
+      echo "Validating etcd health"
+      ETCDCTL_API=3 etcdctl \
+        --endpoints=https://127.0.0.1:2379 \
+        --cacert=/etc/kubernetes/pki/etcd/ca.crt \
+        --cert=/etc/kubernetes/pki/etcd/healthcheck-client.crt \
+        --key=/etc/kubernetes/pki/etcd/healthcheck-client.key \
+        endpoint health
+
+      echo "Restore completed"
+      EOF
+
+        chmod 0755 /usr/local/bin/etcd-restore-from-snapshot.sh
+      }
+
+      main() {
+        disable_swap
+        configure_kernel
+        configure_containerd
+        install_kubernetes_packages
+        install_etcd_tools
+        kubeadm_init_cluster
+        configure_kubectl_access
+        write_helper_scripts
+
+        log "Setup complete"
+        log "kubectl config for ubuntu: /home/ubuntu/.kube/config"
+        log "Worker join command: /home/ubuntu/join-worker.sh"
+        log "Local etcd backup helper: /usr/local/bin/etcd-local-backup.sh"
+        log "Local etcd restore helper: /usr/local/bin/etcd-restore-from-snapshot.sh"
+      }
+
+      main "$@"
+
+runcmd:
+  - bash /usr/local/bin/k8s-master-setup.sh > /var/log/k8s-master-setup.log 2>&1

@@ -1,0 +1,67 @@
+#cloud-config
+
+package_update: true
+package_upgrade: true
+
+packages:
+  - apt-transport-https
+  - ca-certificates
+  - curl
+  - gpg
+  - tar
+  - nfs-common
+
+write_files:
+  - path: /usr/local/bin/client-setup.sh
+    permissions: "0755"
+    content: |
+      #!/usr/bin/env bash
+      set -Eeuo pipefail
+
+      ETCD_VER="${ETCD_VER:-v3.5.15}"
+
+      log() {
+        echo
+        echo "[$(date '+%F %T')] $*"
+        echo
+      }
+
+      install_etcdctl() {
+        log "Installing etcdctl only"
+
+        ARCH="$(uname -m)"
+        case "$ARCH" in
+          x86_64) ETCD_ARCH="amd64" ;;
+          aarch64|arm64) ETCD_ARCH="arm64" ;;
+          *)
+            echo "Unsupported architecture: $ARCH"
+            exit 1
+            ;;
+        esac
+
+        log "Detected architecture: $ARCH -> $ETCD_ARCH"
+
+        cd /tmp
+        rm -rf /tmp/etcd-download
+        mkdir -p /tmp/etcd-download
+        cd /tmp/etcd-download
+
+        curl -fLO "https://github.com/etcd-io/etcd/releases/download/${ETCD_VER}/etcd-${ETCD_VER}-linux-${ETCD_ARCH}.tar.gz"
+        tar -xzf "etcd-${ETCD_VER}-linux-${ETCD_ARCH}.tar.gz"
+
+        install -m 0755 "etcd-${ETCD_VER}-linux-${ETCD_ARCH}/etcdctl" /usr/local/bin/etcdctl
+
+        etcdctl version
+
+        rm -rf /tmp/etcd-download
+      }
+
+      main() {
+        install_etcdctl
+        log "Client setup complete"
+      }
+
+      main "$@"
+
+runcmd:
+  - bash /usr/local/bin/client-setup.sh > /var/log/client-setup.log 2>&1
